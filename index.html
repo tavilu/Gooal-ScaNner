@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Goal Scanner</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    body { background: #0a0a0a; margin: 0; font-family: Arial, sans-serif; color: #fff; }
+    header { padding: 20px; text-align: center; font-size: 26px; font-weight: bold; color: #00ff88; }
+    .container { padding: 20px; }
+    .card { background: #111; border: 1px solid #00ff88; padding: 15px; border-radius: 12px; margin-bottom: 15px; }
+    button { background: #00ff88; border: none; padding: 10px 20px; border-radius: 8px; font-size: 16px; cursor: pointer; }
+    button:hover { background: #00cc66; }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <header>GOAL SCANNER ⚽🔥</header>
+  <div class="container">
+    <button onclick="forcarAnalise()">Rodar análise agora</button>
+    <h2>Resultados:</h2>
+    <div id="resultado"></div>
+  </div>
+
+  <script>
+    const API_URL = "https://gooal-scanner.onrender.com";
+
+    async function carregarJogos() {
+      try {
+        const resposta = await fetch(`${API_URL}/api/fixtures`);
+        const dados = await resposta.json();
+        document.getElementById("resultado").innerHTML =
+          `<div class='card'><pre>${JSON.stringify(dados, null, 2)}</pre></div>`;
+      } catch (e) {
+        document.getElementById("resultado").innerHTML =
+          `<div class='card'>Erro ao conectar com o servidor.</div>`;
+      }
+    }
+
+    async function forcarAnalise() {
+      await fetch(`${API_URL}/api/poll`, { method: "POST" });
+      alert("Análise executada!");
+      carregarJogos();
+    }
+
+    window.onload = carregarJogos;
+  </script>
+</body>
+</html>
