@@ -1,0 +1,8 @@
+{
+  "name": "Goal Scanner",
+  "short_name": "GoalScanner",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#06b6d4"
+}

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Goal Scanner — Painel</title>
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    body{font-family:Inter,system-ui,Arial;margin:0;padding:16px;background:#0f172a;color:#e6eef8}
+    .card{background:#071032;padding:12px;border-radius:8px;margin-bottom:12px}
+    .bar{height:14px;background:#21325b;border-radius:6px;overflow:hidden}
+    .bar-inner{height:100%;background:linear-gradient(90deg,#10b981,#f59e0b);width:50%}
+    header{display:flex;align-items:center;justify-content:space-between}
+    button{background:#06b6d4;border:none;padding:8px 12px;border-radius:8px;color:#032;cursor:pointer}
+  </style>
+  <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async></script>
+</head>
+<body>
+  <header>
+    <h1>Goal Scanner</h1>
+    <div>
+      <button id="subscribeBtn">Ativar notificações</button>
+      <button id="refreshBtn">Atualizar</button>
+    </div>
+  </header>
+  <main id="content"></main>
+  <script>
+    const API_BASE = location.origin || 'http://localhost:8000';
+    window.OneSignal = window.OneSignal || [];
+    OneSignal.push(function() {
+      OneSignal.init({
+        appId: "c043f253-dda2-4503-baca-2f8cc57691af",
+        notifyButton: { enable: false },
+        allowLocalhostAsSecureOrigin: true
+      });
+    });
+    document.getElementById('subscribeBtn').addEventListener('click', async ()=>{
+      OneSignal.push(async function() {
+        const p = await OneSignal.isPushNotificationsEnabled();
+        if (!p) {
+          await OneSignal.registerForPushNotifications();
+          alert('Notificações ativadas (se permitido pelo navegador)');
+        } else alert('Notificações já ativas');
+      });
+    });
+    async function fetchFixtures(){
+      try{
+        const r = await fetch('/api/fixtures');
+        const j = await r.json();
+        render(j.fixtures, j.alerts || {});
+      }catch(e){console.error(e)}
+    }
+    function render(fixtures, alerts){
+      const content = document.getElementById('content');
+      content.innerHTML = '';
+      for(const id in fixtures){
+        const f = fixtures[id];
+        const el = document.createElement('div');
+        el.className = 'card';
+        const alertsFor = alerts[id] || [];
+        // safe width calc
+        let width = Math.min(100, (alertsFor.length*20));
+        el.innerHTML = "<strong>" + (f.home||'') + " x " + (f.away||'') + "</strong><div>Minuto: " + (f.minute||'') + "</div><div>Ultimos alertas: " + alertsFor.length + "</div><div class='bar'><div class='bar-inner' style='width:" + width + "%'></div></div>";
+        content.appendChild(el);
+      }
+    }
+    document.getElementById('refreshBtn').addEventListener('click', fetchFixtures);
+    setInterval(fetchFixtures, 10000);
+    fetchFixtures();
+  </script>
+</body>
+</html>

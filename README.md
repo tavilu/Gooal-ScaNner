@@ -1,0 +1,3 @@
+# Goal Scanner
+
+Correct structure.
