@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: goal-scanner
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app -k uvicorn.workers.UvicornWorker --timeout 0"
+    autoDeploy: true
+    region: oregon
+    envVars:
+      - key: API_FOOTBALL_KEY
+        sync: false
+      - key: API_FOOTBALL_HOST
+        value: v3.football.api-sports.io
+      - key: POLL_INTERVAL
+        value: "12"
+      - key: STATE_FILE
+        value: goal_bot_state.json
+      - key: LOG_LEVEL
+        value: INFO
+      - key: ONESIGNAL_APP_ID
+        sync: false
+      - key: ONESIGNAL_API_KEY
+        sync: false
+      - key: MIN_MATCH_MINUTE
+        value: "8"
+      - key: MAX_MATCH_MINUTE
+        value: "90"
+      - key: DELTA_SHOTS_OT_THRESHOLD
+        value: "2"
+      - key: DELTA_ATTACKS_THRESHOLD
+        value: "6"
+      - key: DELTA_SHOTS_TOTAL_THRESHOLD
+        value: "3"
