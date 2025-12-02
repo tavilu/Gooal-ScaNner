@@ -1,25 +1,13 @@
 fastapi
-uvicorn
+uvicorn[standard]
 gunicorn
-
 requests
 beautifulsoup4
 lxml
-
 apscheduler
-
 python-dotenv
-
 pytz
-
-# Logs e utilidades
 rich
-
-# Caso seu código use parsing JSON mais rápido
 orjson
-
-# Caso fontes externas retornem HTML pesado
 aiohttp
-
-# Compatível com a Render, evita problemas de versão
 certifi
