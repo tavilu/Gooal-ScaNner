@@ -1,113 +1,104 @@
+# analyzer.py (API-Football aware, GPI 0-100)
 import time
 import logging
 from collections import defaultdict, deque
 
 logger = logging.getLogger("goal_scanner.analyzer")
 
-# JANELA MÓVEL (3 minutos, com execução a cada 8s → ~22 ciclos)
-WINDOW_SIZE = 22
+# WINDOW: 3 minutes / polls at 8s => ~22 entries
+WINDOW_SIZE = int(180 / 8)  # configurable if POLL_INTERVAL changes
 
-# PESOS PROFISSIONAIS
+# PROFESSIONAL WEIGHTS (tuneable via env in future)
 W_PRESSURE = 2.5
-W_DA = 2.8                # dangerous attacks
-W_SOT = 3.2               # shots on target
-W_XG = 18                 # xG é MUITO poderoso
-W_ODDS = 4.5              # queda forte = risco alto
+W_DA = 2.8
+W_SOT = 3.2
+W_XG = 18.0
+W_ODDS = 4.5
+TREND_MULT = 3.0
 
-# Redução de ruído
 MIN_EVENTS_REQUIRED = 1
 
-
 class Analyzer:
-    """
-    Combina todas as fontes e calcula o GPI profissional (0–100)
-    """
-
     def __init__(self, sources, notifier):
         self.sources = sources
         self.notifier = notifier
-
-        # histórico por fixture
         self.history = defaultdict(lambda: deque(maxlen=WINDOW_SIZE))
+        self.alerts = []
 
-        self.alerts = []  # últimos alertas enviados
-
-    # ----------------------------- UTILIDADES -----------------------------
-
-    def _merge_source_results(self, raw):
+    def _collect_from_sources(self):
         """
-        Une os dados de todas as fontes em um dict por fixture_id
+        Ask every source for their summaries and group results per fixture_id.
+        Expect each source to return list of dicts with keys:
+          fixture_id, pressure, dangerous_attacks, shots_on_target, xg, odds_delta (optional)
         """
+        raw = []
+        for s in self.sources:
+            try:
+                data = s.fetch_live_summary() or []
+                # ensure list
+                if isinstance(data, dict):
+                    data = [data]
+                raw.append(data)
+            except Exception as e:
+                logger.exception("Source fetch error: %s", e)
+        # flatten
+        flat = []
+        for block in raw:
+            if not isinstance(block, list):
+                continue
+            for item in block:
+                if not isinstance(item, dict):
+                    continue
+                # normalize keys
+                entry = {
+                    "fixture_id": str(item.get("fixture_id") or item.get("id") or item.get("fixture")),
+                    "pressure": float(item.get("pressure", 0.0)),
+                    "dangerous_attacks": float(item.get("dangerous_attacks", 0.0)),
+                    "shots_on_target": float(item.get("shots_on_target", 0.0)),
+                    "xg": float(item.get("xg", 0.0)),
+                    "odds_delta": float(item.get("odds_delta", 0.0)) if item.get("odds_delta") is not None else 0.0
+                }
+                flat.append(entry)
+        # merge by fixture_id: keep maximum signals among sources (conservative merge)
         merged = {}
+        for e in flat:
+            fid = e["fixture_id"]
+            if fid not in merged:
+                merged[fid] = e.copy()
+            else:
+                for k in ["pressure","dangerous_attacks","shots_on_target","xg","odds_delta"]:
+                    merged[fid][k] = max(merged[fid].get(k,0.0), e.get(k,0.0))
+        return list(merged.values())
 
-        for src in raw:
-            for entry in src:
-                fid = entry["fixture_id"]
-                if fid not in merged:
-                    merged[fid] = {
-                        "fixture_id": fid,
-                        "pressure": 0.0,
-                        "dangerous_attacks": 0.0,
-                        "shots_on_target": 0.0,
-                        "xg": 0.0,
-                        "odds_delta": 0.0,
-                    }
-
-                for key in ["pressure", "dangerous_attacks", "shots_on_target", "xg", "odds_delta"]:
-                    if key in entry:
-                        merged[fid][key] = max(merged[fid][key], float(entry[key]))
-
-        return merged
-
-    # ----------------------------- GPI PROFISSIONAL -----------------------------
-
-    def compute_gpi(self, data_list):
+    def compute_gpi_from_history(self, hist):
         """
-        Calcula GPI (0–100) usando:
-        - pressão
-        - ataques perigosos
-        - finalizações no alvo
-        - xG
-        - queda de odds
-        - tendência (com janelas)
-
-        output:
-            {"gpi": 0..100, "level": "VERDE|AMARELO|VERMELHO"}
+        hist: list of entries (dict) ordered oldest->newest
+        returns dict {gpi, level}
         """
-        if not data_list:
-            return {"gpi": 0, "level": "VERDE"}
+        if not hist or len(hist) < 1:
+            return {"gpi": 0.0, "level": "VERDE"}
 
-        # média na janela
-        pressure = sum(d["pressure"] for d in data_list) / len(data_list)
-        da = sum(d["dangerous_attacks"] for d in data_list) / len(data_list)
-        sot = sum(d["shots_on_target"] for d in data_list) / len(data_list)
-        xg = sum(d["xg"] for d in data_list) / len(data_list)
-        odds = sum(d["odds_delta"] for d in data_list) / len(data_list)
+        # compute averages
+        pressure = sum(h["pressure"] for h in hist)/len(hist)
+        da = sum(h["dangerous_attacks"] for h in hist)/len(hist)
+        sot = sum(h["shots_on_target"] for h in hist)/len(hist)
+        xg = sum(h["xg"] for h in hist)/len(hist)
+        odds = sum(h.get("odds_delta",0.0) for h in hist)/len(hist)
 
-        # tendência temporal (últimos 3 ciclos)
-        if len(data_list) > 3:
-            trend = (
-                (data_list[-1]["pressure"] + data_list[-1]["dangerous_attacks"])
-                - (data_list[-3]["pressure"] + data_list[-3]["dangerous_attacks"])
-            )
-            trend = max(0, trend)
-        else:
-            trend = 0
+        # short-term trend: compare last vs 3-back
+        trend = 0.0
+        if len(hist) >= 4:
+            short_now = hist[-1]["pressure"] + hist[-1]["dangerous_attacks"]
+            short_before = hist[-4]["pressure"] + hist[-4]["dangerous_attacks"]
+            trend = max(0.0, short_now - short_before)
 
-        # GPI linear
-        gpi_raw = (
-            pressure * W_PRESSURE +
-            da * W_DA +
-            sot * W_SOT +
-            xg * W_XG +
-            odds * W_ODDS +
-            trend * 3
-        )
+        # raw score
+        raw = (pressure * W_PRESSURE) + (da * W_DA) + (sot * W_SOT) + (xg * W_XG) + (odds * W_ODDS) + (trend * TREND_MULT)
 
-        # normalização para 0–100
-        gpi = min(100, gpi_raw * 1.4)
+        # normalize to 0..100 with a heuristic scale factor
+        gpi = min(100.0, raw * 1.4)
 
-        # nível
+        # levels
         if gpi >= 66:
             level = "VERMELHO"
         elif gpi >= 36:
@@ -115,61 +106,59 @@ class Analyzer:
         else:
             level = "VERDE"
 
-        return {"gpi": round(gpi, 2), "level": level}
-
-    # ----------------------------- CICLO PRINCIPAL -----------------------------
+        return {"gpi": round(gpi,2), "level": level}
 
     def run_cycle(self):
-        logger.info("Analyzer cycle started...")
+        logger.info("Analyzer cycle started")
+        try:
+            merged = self._collect_from_sources()
+            for item in merged:
+                fid = item["fixture_id"]
+                # push to history
+                self.history[fid].append(item)
 
-        raw_sources = []
-        for src in self.sources:
-            try:
-                data = src.fetch_live_summary()
-                raw_sources.append(data)
-            except Exception as e:
-                logger.error("Source error: %s", e)
+                # ignore fixtures with no informative data
+                hist = list(self.history[fid])
+                # require at least one non-zero indicator
+                if all((h["pressure"]==0 and h["dangerous_attacks"]==0 and h["shots_on_target"]==0 and h.get("odds_delta",0)==0 and h["xg"]==0) for h in hist):
+                    continue
 
-        merged = self._merge_source_results(raw_sources)
+                gpi_info = self.compute_gpi_from_history(hist)
+                alert = {
+                    "fixture": fid,
+                    "gpi": gpi_info["gpi"],
+                    "level": gpi_info["level"],
+                    "merged": item,
+                    "time": int(time.time())
+                }
 
-        for fid, stats in merged.items():
-            # gravar nos históricos
-            self.history[fid].append(stats)
+                # dedupe: avoid spamming same level frequently
+                last = self.alerts[-1] if self.alerts else None
+                if last and last["fixture"] == fid and last["level"] == alert["level"]:
+                    # if same level within 30s, skip
+                    if time.time() - last["time"] < 30:
+                        continue
 
-            # ignorar jogos sem eventos reais
-            if stats["pressure"] == 0 and stats["dangerous_attacks"] == 0 and stats["shots_on_target"] == 0 and stats["odds_delta"] == 0:
-                continue
+                # store alert and notify
+                self.alerts.append(alert)
+                if len(self.alerts) > 500:
+                    self.alerts.pop(0)
+                try:
+                    # notifier should implement send_alert(alert)
+                    self.notifier.send_alert(alert)
+                except Exception:
+                    logger.exception("Notifier failed")
 
-            gpi_info = self.compute_gpi(list(self.history[fid]))
-
-            alert = {
-                "fixture": fid,
-                "gpi": gpi_info["gpi"],
-                "level": gpi_info["level"],
-                "merged": stats,
-                "time": time.time(),
-            }
-
-            # salvar últimos alertas
-            self.alerts.append(alert)
-            if len(self.alerts) > 200:
-                self.alerts.pop(0)
-
-            # enviar notificações
-            try:
-                self.notifier.send_alert(alert)
-            except Exception as e:
-                logger.error("Notifier error: %s", e)
-
-        logger.info("Analyzer cycle completed.")
-
-    # ----------------------------- API HELPERS -----------------------------
+            logger.info("Analyzer cycle completed")
+        except Exception:
+            logger.exception("Analyzer.run_cycle failed")
 
     def status_report(self):
         return {
             "sources": [type(s).__name__ for s in self.sources],
-            "alerts_count": len(self.alerts),
+            "alerts_count": len(self.alerts)
         }
 
     def get_alerts(self):
-        return list(reversed(self.alerts[-200:]))  # últimos 200
+        return list(reversed(self.alerts[-200:]))
+
