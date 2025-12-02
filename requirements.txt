@@ -4,3 +4,5 @@ requests
 apscheduler
 gunicorn
 python-dotenv
+beautifulsoup4
+lxml
