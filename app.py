@@ -1,3 +1,4 @@
+
 # app.py
 import os
 import logging
@@ -9,32 +10,43 @@ from analyzer import Analyzer
 from sources.sofascore import SofaScoreSource
 from sources.flashscore import FlashScoreSource
 from sources.bet365 import Bet365Source
+from sources.odds import OddsSource      # <-- NOVO
 from notifier import Notifier
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("goal_scanner")
 
-# Configs via env
+# Config
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "12"))
 
-# Init services / connectors
+# Initialize sources
 sof = SofaScoreSource()
 flash = FlashScoreSource()
 bet = Bet365Source()
+odds = OddsSource()       # <-- NOVO
 notifier = Notifier()
 
-analyzer = Analyzer(sources=[sof, flash, bet], notifier=notifier)
+# Analyzer com a nova fonte Odds
+analyzer = Analyzer(
+    sources=[sof, flash, bet, odds],
+    notifier=notifier
+)
 
 app = FastAPI(title="Goal Scanner - Full")
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 scheduler = BackgroundScheduler()
 
 @app.on_event("startup")
 def startup_event():
-    logger.info("Starting scheduler")
+    logger.info("Starting scheduler...")
     scheduler.add_job(analyzer.run_cycle, "interval", seconds=POLL_INTERVAL, max_instances=1)
     scheduler.start()
 
@@ -47,7 +59,7 @@ def health():
     return {"status": "ok"}
 
 @app.post("/api/scan")
-def trigger_scan():
+def scan():
     analyzer.run_cycle()
     return {"status": "scan_triggered"}
 
