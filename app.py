@@ -77,6 +77,65 @@ def startup_event():
         id="main_job"
     )
     scheduler.start()
+@app.get("/api/fixtures")
+def fixtures():
+    """
+    Retorna a última leitura de jogos do APIFootball que o Analyzer usou.
+    Se não houver jogos no momento, retorna [].
+    """
+    try:
+        # APIFootballSource tem método detect_live_games()
+        live_data, limited = apifoot.detect_live_games()
+
+        if limited:
+            return {"error": "API limit reached", "fixtures": []}
+
+        if live_data is None:
+            return []
+
+        fixtures_list = []
+        for m in live_data:
+            try:
+                fid = str(m["fixture"]["id"])
+                stats = m.get("statistics", [])
+
+                da = 0
+                sot = 0
+                pressure = 0.0
+                xg = 0.0
+
+                for block in stats:
+                    for s in block.get("statistics", []):
+                        t = s.get("type", "").lower()
+                        v = s.get("value", 0)
+
+                        if "dangerous attacks" in t:
+                            da = max(da, int(v))
+                        if "shots on target" in t or "shots on goal" in t:
+                            sot = max(sot, int(v))
+                        if "xg" in t:
+                            try:
+                                xg = max(xg, float(v))
+                            except:
+                                pass
+                        if t == "attacks":
+                            pressure = min(10, float(v) / 10)
+
+                fixtures_list.append({
+                    "fixture_id": fid,
+                    "pressure": pressure,
+                    "dangerous_attacks": da,
+                    "shots_on_target": sot,
+                    "xg": xg
+                })
+
+            except:
+                continue
+
+        return fixtures_list
+
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.on_event("shutdown")
