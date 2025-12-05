@@ -1,6 +1,6 @@
 async function loadFixtures() {
     try {
-        const res = await fetch("/api/fixtures");
+        const res = await fetch("/fixtures");
         const data = await res.json();
 
         const container = document.getElementById("fixtures");
@@ -11,57 +11,65 @@ async function loadFixtures() {
             return;
         }
 
-        data.forEach(m => {
+        data.forEach(game => {
             const div = document.createElement("div");
-            div.className = "card";
+            div.className = "fixture-card";
 
             div.innerHTML = `
-                <strong>Fixture:</strong> ${m.fixture_id}<br>
-                <strong>Pressure:</strong> ${m.pressure}<br>
-                <strong>D. Attacks:</strong> ${m.dangerous_attacks}<br>
-                <strong>Shots on Target:</strong> ${m.shots_on_target}<br>
-                <strong>xG:</strong> ${m.xg}
+                <strong>${game.league || "Liga Desconhecida"}</strong><br>
+                ${game.home} ${game.score} ${game.away}<br>
+                <small>${game.minute || "?"} min</small>
             `;
 
             container.appendChild(div);
         });
+
     } catch (err) {
-        console.error("Erro ao carregar fixtures:", err);
+        console.error("Erro ao carregar fixtures", err);
     }
 }
 
 async function loadAlerts() {
     try {
-        const res = await fetch("/api/last_alerts");
-        const data = await res.json();
+        const res = await fetch("/alerts");
+        const alerts = await res.json();
 
         const container = document.getElementById("alerts");
         container.innerHTML = "";
 
-        if (!data || data.length === 0) {
+        if (!alerts || alerts.length === 0) {
             container.innerHTML = "<p>Nenhum alerta recente.</p>";
             return;
         }
 
-        data.forEach(alert => {
+        alerts.forEach(alert => {
             const div = document.createElement("div");
-            div.className = "card";
-            div.innerHTML = alert;
+            div.className = "alert-card";
+
+            div.innerHTML = `
+                <strong>${alert.game || "Jogo"}</strong><br>
+                <p>${alert.message || "Sem detalhes"}</p>
+                <small>${alert.time || ""}</small>
+            `;
+
             container.appendChild(div);
         });
+
     } catch (err) {
-        console.error("Erro ao carregar alertas:", err);
+        console.error("Erro ao carregar alerts", err);
     }
 }
 
-// Botão "Rodar Scan Agora"
-document.getElementById("manual-scan").onclick = async () => {
-    await fetch("/api/scan", { method: "POST" });
-    alert("Scan executado!");
-};
+document.getElementById("manual-scan").addEventListener("click", async () => {
+    await fetch("/scan");
+    loadFixtures();
+    loadAlerts();
+});
 
-// Atualização automática
 loadFixtures();
 loadAlerts();
-setInterval(loadFixtures, 5000);
-setInterval(loadAlerts, 7000);
+setInterval(() => {
+    loadFixtures();
+    loadAlerts();
+}, 15000);
+
