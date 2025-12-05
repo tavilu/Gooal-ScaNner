@@ -11,3 +11,5 @@ rich
 orjson
 aiohttp
 certifi
+Jinja2
+
