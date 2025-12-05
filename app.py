@@ -1,16 +1,11 @@
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from fastapi import Request
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-@app.get("/")
-def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
 # app.py – SMART POLLING PRO
+
 import os
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from analyzer import Analyzer
@@ -24,9 +19,32 @@ from notifier import Notifier
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("goal_scanner")
 
-POLL_NORMAL = 60       # sem jogos
-POLL_TURBO = 12        # com jogos ao vivo
+POLL_NORMAL = 60
+POLL_TURBO = 12
 current_interval = POLL_NORMAL
+
+
+# ---------------------------------------------------
+# 1) CRIAÇÃO DO APP (TEM QUE VIR PRIMEIRO!)
+# ---------------------------------------------------
+app = FastAPI(title="Goal Scanner - Smart Polling PRO")
+
+# Monta pastas estáticas e templates
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+
+# ---------------------------------------------------
+# 2) FRONT-END
+# ---------------------------------------------------
+@app.get("/")
+def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+# ---------------------------------------------------
+# 3) SISTEMA INTERNO (FONTES, ANALISADOR, SCHEDULER)
+# ---------------------------------------------------
 
 # Initialize sources
 apifoot = APIFootballSource()
@@ -37,8 +55,6 @@ odds = OddsSource()
 
 notifier = Notifier()
 analyzer = Analyzer(sources=[apifoot, sof, flash, bet, odds], notifier=notifier)
-
-app = FastAPI(title="Goal Scanner - Smart Polling PRO")
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,10 +70,7 @@ job = None
 def update_polling_interval(has_live_games: bool, api_limited: bool):
     global current_interval, job
 
-    if api_limited:
-        new_interval = POLL_NORMAL
-    else:
-        new_interval = POLL_TURBO if has_live_games else POLL_NORMAL
+    new_interval = POLL_NORMAL if api_limited else (POLL_TURBO if has_live_games else POLL_NORMAL)
 
     if new_interval != current_interval:
         current_interval = new_interval
@@ -85,14 +98,20 @@ def startup_event():
         id="main_job"
     )
     scheduler.start()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    scheduler.shutdown(wait=False)
+
+
+# ---------------------------------------------------
+# 4) ROTAS DE API
+# ---------------------------------------------------
+
 @app.get("/api/fixtures")
 def fixtures():
-    """
-    Retorna a última leitura de jogos do APIFootball que o Analyzer usou.
-    Se não houver jogos no momento, retorna [].
-    """
     try:
-        # APIFootballSource tem método detect_live_games()
         live_data, limited = apifoot.detect_live_games()
 
         if limited:
@@ -146,11 +165,6 @@ def fixtures():
         return {"error": str(e)}
 
 
-@app.on_event("shutdown")
-def shutdown_event():
-    scheduler.shutdown(wait=False)
-
-
 @app.get("/api/health")
 def health():
     return {"status": "ok", "poll_interval": current_interval}
@@ -172,7 +186,6 @@ def last_alerts():
     return analyzer.get_alerts()
 
 
-# Hook para receber sinais do APIFootball
 @app.post("/api/smart_update")
 def smart_update(has_live_games: bool, api_limited: bool):
     update_polling_interval(has_live_games, api_limited)
