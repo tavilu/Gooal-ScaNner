@@ -1,75 +1,46 @@
 async function loadFixtures() {
-    try {
-        const res = await fetch("/fixtures");
-        const data = await res.json();
+  try {
+    const response = await fetch('/api/fixtures');
+    if (!response.ok) throw new Error('Falha ao carregar jogos');
+    const fixtures = await response.json();
 
-        const container = document.getElementById("fixtures");
-        container.innerHTML = "";
+    const container = document.getElementById('fixtures');
+    container.innerHTML = ''; // limpa conteúdo
 
-        if (!data || data.length === 0) {
-            container.innerHTML = "<p>Nenhum jogo ao vivo no momento.</p>";
-            return;
-        }
-
-        data.forEach(game => {
-            const div = document.createElement("div");
-            div.className = "fixture-card";
-
-            div.innerHTML = `
-                <strong>${game.league || "Liga Desconhecida"}</strong><br>
-                ${game.home} ${game.score} ${game.away}<br>
-                <small>${game.minute || "?"} min</small>
-            `;
-
-            container.appendChild(div);
-        });
-
-    } catch (err) {
-        console.error("Erro ao carregar fixtures", err);
+    if (fixtures.length === 0) {
+      container.textContent = 'Nenhum jogo ao vivo no momento.';
+      return;
     }
+
+    fixtures.forEach(fixture => {
+      const div = document.createElement('div');
+      div.classList.add('fixture');
+      div.textContent = `Jogo ID: ${fixture.fixture_id} — Pressão: ${fixture.pressure} — Ataques Perigosos: ${fixture.dangerous_attacks} — Chutes no Gol: ${fixture.shots_on_target} — xG: ${fixture.xg}`;
+      container.appendChild(div);
+    });
+  } catch (e) {
+    console.error(e);
+    document.getElementById('fixtures').textContent = 'Erro ao carregar jogos.';
+  }
 }
 
-async function loadAlerts() {
-    try {
-        const res = await fetch("/alerts");
-        const alerts = await res.json();
-
-        const container = document.getElementById("alerts");
-        container.innerHTML = "";
-
-        if (!alerts || alerts.length === 0) {
-            container.innerHTML = "<p>Nenhum alerta recente.</p>";
-            return;
-        }
-
-        alerts.forEach(alert => {
-            const div = document.createElement("div");
-            div.className = "alert-card";
-
-            div.innerHTML = `
-                <strong>${alert.game || "Jogo"}</strong><br>
-                <p>${alert.message || "Sem detalhes"}</p>
-                <small>${alert.time || ""}</small>
-            `;
-
-            container.appendChild(div);
-        });
-
-    } catch (err) {
-        console.error("Erro ao carregar alerts", err);
-    }
+async function runManualScan() {
+  try {
+    const res = await fetch('/api/scan', { method: 'POST' });
+    if (!res.ok) throw new Error('Erro ao rodar scan');
+    alert('Scan iniciado!');
+    await loadFixtures(); // Atualiza a lista após o scan
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
 }
 
-document.getElementById("manual-scan").addEventListener("click", async () => {
-    await fetch("/scan");
-    loadFixtures();
-    loadAlerts();
-});
+document.getElementById('manual-scan').addEventListener('click', runManualScan);
 
+// Carrega automaticamente ao abrir a página
 loadFixtures();
-loadAlerts();
-setInterval(() => {
-    loadFixtures();
-    loadAlerts();
-}, 15000);
+
+// Opcional: Atualiza automaticamente a cada 60s
+setInterval(loadFixtures, 60000);
+
 
