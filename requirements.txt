@@ -1,24 +1,13 @@
 fastapi
 uvicorn[standard]
 gunicorn
-
 httpx
 pydantic
 python-dateutil
-
 jinja2
-
-# Logs
 loguru
-
-# Se estiver usando BeautifulSoup em scraping externo
 beautifulsoup4
 lxml
-
-# Se estiver acessando APIs com WebSockets
 websockets
-
-# Controle do tempo/async
-asyncio
 
 
