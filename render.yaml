@@ -1,12 +1,13 @@
 services:
-  - type: web
-    name: goal-scanner-full
-    env: docker
+  - name: goal-scanner
+    type: web
+    runtime: docker
+    repo: https://github.com/SEU_USER/SEU_REPO
     plan: free
-    autoDeploy: true
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1
+    envVars:
+      - key: APIFOOTBALL_KEY
+        sync: false
+      - key: ENVIRONMENT
+        value: "production"
     healthCheckPath: /api/health
-
+    autoDeploy: true
