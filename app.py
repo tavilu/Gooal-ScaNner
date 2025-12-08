@@ -1,114 +1,84 @@
-# app.py - FastAPI backend for Goal Scanner
-
-from fastapi import FastAPI, Request
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 import asyncio
-import httpx
-from datetime import datetime
+import logging
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from engine.analyzer import Analyzer
+from sources import flash, apifoot  # seus módulos de fontes
+
+logger = logging.getLogger("goal_scanner")
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# -------------------------------------------------------------
-# CONFIGURAÇÕES DO PROJETO
-# -------------------------------------------------------------
-API_SOURCES = {
-    "apifootball": "https://apifootball.com/demo/api/matches",
-    "sofascore": "https://api.sofascore.com/api/v1/sport/football/events/live",
-    "flashscore": "https://flashscore-api.example.com/live",
-}
+# Configuração dos intervalos de polling
+POLL_NORMAL = 30  # segundos
+POLL_TURBO = 10   # segundos
 
-intervalo_atual_global = 20  # segundos
-jogos_cache = []
-ultima_atualizacao = None
+current_interval = POLL_NORMAL
+polling_task = None
 
-# -------------------------------------------------------------
-# FUNÇÃO PRINCIPAL DE COLETA (POLLING INTELIGENTE)
-# -------------------------------------------------------------
-async def fetch_all_sources():
-    global jogos_cache, ultima_atualizacao
-
-    resultados = []
-
-    async with httpx.AsyncClient(timeout=10) as client:
-        for nome, url in API_SOURCES.items():
-            try:
-                r = await client.get(url)
-                resultados.append({
-                    "fonte": nome,
-                    "url": url,
-                    "status": r.status_code,
-                    "dados": r.json() if r.status_code == 200 else None
-                })
-            except Exception as e:
-                resultados.append({
-                    "fonte": nome,
-                    "url": url,
-                    "status": "erro",
-                    "erro": str(e)
-                })
-
-    jogos_cache = resultados
-    ultima_atualizacao = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    return resultados
+analyzer = Analyzer(sources=[flash, apifoot])
 
 
-# -------------------------------------------------------------
-# ROTAS PRINCIPAIS
-# -------------------------------------------------------------
-@app.get("/")
-def home(request: Request):
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "intervalo": intervalo_atual_global,
-        "ultima": ultima_atualizacao
-    })
-
-
-@app.get("/monitor")
-def monitor(request: Request):
-    return templates.TemplateResponse("monitor.html", {
-        "request": request,
-        "intervalo": intervalo_atual_global,
-        "ultima": ultima_atualizacao
-    })
-
-
-# -------------------------------------------------------------
-# ROTAS DE DADOS PARA O FRONT-END
-# -------------------------------------------------------------
-@app.get("/api/jogos")
-async def api_jogos():
-    await fetch_all_sources()
-    return JSONResponse({
-        "atualizado": ultima_atualizacao,
-        "jogos": jogos_cache
-    })
-
-
-@app.post("/api/intervalo/{segundos}")
-async def update_interval(segundos: int):
-    global intervalo_atual_global
-    intervalo_atual_global = segundos
-    return {"novo_intervalo": segundos}
-
-
-# -------------------------------------------------------------
-# TASK BACKGROUND (POLLING AUTOMÁTICO)
-# -------------------------------------------------------------
-async def polling_task():
+async def polling_loop():
+    global current_interval
+    logger.info("SMART POLLING: loop iniciado")
     while True:
-        await fetch_all_sources()
-        await asyncio.sleep(intervalo_atual_global)
+        try:
+            analyzer.run_cycle()
+
+            # Detecta live via apifoot (se existir método)
+            has_live = False
+            if hasattr(apifoot, "detect_live_games"):
+                has_live = apifoot.detect_live_games()[0]
+
+            current_interval = POLL_TURBO if has_live else POLL_NORMAL
+
+            logger.info(f"Intervalo atual: {current_interval}s")
+
+        except Exception as e:
+            logger.error(f"Erro no loop de polling: {e}")
+
+        await asyncio.sleep(current_interval)
 
 
 @app.on_event("startup")
-def start_background_task():
-    asyncio.create_task(polling_task())
+async def startup_event():
+    global polling_task
+    logger.info("Iniciando polling em background...")
+    polling_task = asyncio.create_task(polling_loop())
 
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global polling_task
+    logger.info("Encerrando polling...")
+    if polling_task:
+        polling_task.cancel()
+        try:
+            await polling_task
+        except asyncio.CancelledError:
+            pass
+
+
+@app.get("/", response_class=JSONResponse)
+async def home():
+    return {"status": "Gooal Scanner online"}
+
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok", "poll_interval": current_interval}
+
+
+@app.get("/api/scan")
+async def scan():
+    analyzer.run_cycle()
+    return {"status": "scan_triggered"}
+
+
+@app.get("/api/live")
+async def live():
+    return analyzer.get_recent_signals()
 
 
