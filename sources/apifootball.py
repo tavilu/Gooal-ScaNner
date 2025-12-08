@@ -1,55 +1,39 @@
-# sources/apifootball.py
-import os
+import requests
 import logging
-import httpx
-
 
 logger = logging.getLogger("goal_scanner.apifootball")
-API_KEY = os.getenv("APIFOOTBALL_KEY")
-BASE = "https://api-football-v1.p.rapidapi.com/v3"
 
+class ApiFootballSource:
+    def __init__(self):
+        self.api_key = "SUA_API_KEY_AQUI"  # configure via .env ou outro meio
+        self.base_url = "https://api-football-v1.p.rapidapi.com/v3"
 
-class APIFootballSource:
-def __init__(self):
-self.headers = {
-"x-rapidapi-host": "api-football-v1.p.rapidapi.com",
-"x-rapidapi-key": API_KEY,
-}
+    def fetch_live_summary(self):
+        # Exemplo básico - você pode ajustar conforme API real
+        try:
+            headers = {
+                "X-RapidAPI-Key": self.api_key,
+                "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+            }
+            resp = requests.get(f"{self.base_url}/fixtures?live=all", headers=headers, timeout=10)
+            data = resp.json()
 
+            results = []
+            for fixture in data.get("response", []):
+                results.append({
+                    "fixture_id": str(fixture["fixture"]["id"]),
+                    "pressure": 0.0,  # API não fornece diretamente, ajuste se quiser
+                    "dangerous_attacks": 0,
+                    "shots_on_target": 0,
+                    "xg": 0.0
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Erro ApiFootball: {e}")
+            return []
 
-def detect_live_games(self):
-"""Retorna (live_data, limited_flag)"""
-if not API_KEY:
-logger.warning("APIFOOTBALL_KEY ausente")
-return ([], True)
+    def detect_live_games(self):
+        # Simples - retorna lista vazia e True para "limitado"
+        return [], True
 
-
-try:
-with httpx.Client(timeout=10) as c:
-r = c.get(f"{BASE}/fixtures?live=all", headers=self.headers)
-if r.status_code == 429:
-logger.warning("API-Football: limit reached")
-return ([], True)
-if r.status_code != 200:
-logger.error("API-Football erro %s", r.status_code)
-return ([], True)
-
-
-data = r.json().get("response", [])
-return (data, False)
-except Exception as e:
-logger.error(f"Erro APIFootball: {e}")
-return ([], True)
-
-
-def fetch_stats_for_fixture(self, fixture_id):
-try:
-with httpx.Client(timeout=10) as c:
-r = c.get(f"{BASE}/fixtures/statistics?h2h=false&fixture={fixture_id}", headers=self.headers)
-if r.status_code != 200:
-return None
-return r.json().get("response", [])
-except Exception as e:
-logger.error(f"Erro APIFootball stats: {e}")
-return None
 
