@@ -1,8 +1,12 @@
 services:
   - type: web
     name: goal-scanner-full
-    env: python
+    env: docker
     plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn app:app -k uvicorn.workers.UvicornWorker --timeout 0"
     autoDeploy: true
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    healthCheckPath: /api/health
+
