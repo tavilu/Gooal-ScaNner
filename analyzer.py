@@ -1,116 +1,78 @@
-# analyzer.py – Smart Polling PRO compatible
-import time
-import logging
-import requests
-
-from collections import defaultdict, deque
-
-logger = logging.getLogger("goal_scanner.analyzer")
-
-WINDOW = 20  # ~3 minutos para TURBO (12s)
-
-W_PRESSURE = 2.5
-W_DA = 2.8
-W_SOT = 3.2
-W_XG = 18.0
-
-class Analyzer:
-    def __init__(self, sources, notifier):
-        self.sources = sources
-        self.notifier = notifier
-        self.history = defaultdict(lambda: deque(maxlen=WINDOW))
-        self.alerts = []
-
-    def run_cycle(self):
-        logger.info("→ Cycle Started")
-
-        smart_has_live = False
-        smart_limited = False
-
-        merged = {}
-
-        for s in self.sources:
-            try:
-                data = s.fetch_live_summary()
-
-                # Smart Polling Feedback
-                if isinstance(data, dict) and "__smart" in data:
-                    smart_has_live = data["__smart"]["has_live"]
-                    smart_limited = data["__smart"]["limited"]
-                    data = data.get("data", [])
-
-                for item in data:
-                    fid = item["fixture_id"]
-
-                    if fid not in merged:
-                        merged[fid] = item
-                    else:
-                        for k in ["pressure", "dangerous_attacks", "shots_on_target", "xg"]:
-                            merged[fid][k] = max(merged[fid][k], item[k])
-
-            except:
-                logger.exception("Falha source")
-
-        # Enviar feedback SMART POLLING para app
-        try:
-            requests.post("http://localhost:8000/api/smart_update",
-                          json={"has_live_games": smart_has_live,
-                                "api_limited": smart_limited})
-        except:
-            pass
-
-        # Process analyzer
-        for fid, item in merged.items():
-            self.history[fid].append(item)
-            hist = list(self.history[fid])
-
-            if not hist:
-                continue
-
-            pressure = sum(h["pressure"] for h in hist) / len(hist)
-            da = sum(h["dangerous_attacks"] for h in hist) / len(hist)
-            sot = sum(h["shots_on_target"] for h in hist) / len(hist)
-            xg = sum(h["xg"] for h in hist) / len(hist)
-
-            raw = (
-                pressure * W_PRESSURE +
-                da * W_DA +
-                sot * W_SOT +
-                xg * W_XG
-            )
-
-            gpi = min(100, raw * 1.4)
-
-            level = "VERDE"
-            if gpi >= 66:
-                level = "VERMELHO"
-            elif gpi >= 36:
-                level = "AMARELO"
-
-            alert = {
-                "fixture": fid,
-                "gpi": round(gpi, 2),
-                "level": level,
-                "data": item,
-                "ts": int(time.time())
-            }
-
-            self.alerts.append(alert)
-            if len(self.alerts) > 300:
-                self.alerts.pop(0)
-
-            try:
-                self.notifier.send_alert(alert)
-            except:
-                pass
-
-        logger.info("→ Cycle Finished")
-
-    def get_alerts(self):
-        return list(reversed(self.alerts[-200:]))
-
-    def status_report(self):
-        return {"sources": [type(s).__name__ for s in self.sources],
-                "alerts": len(self.alerts)}
+# engine/analyzer.py
+apifoot_src = next((s for s in self.sources if s.__class__.__name__.lower().startswith('apifoot')), None)
 
 
+flash_data = flash_src.fetch_live_summary() if flash_src else []
+apifoot_live, limited = apifoot_src.detect_live_games() if apifoot_src else ([], True)
+
+
+# cria mapa por fixture_id
+merged = {}
+
+
+for item in flash_data:
+fid = item.get('fixture_id')
+merged[fid] = merged.get(fid, {})
+merged[fid].update(item)
+
+
+# inclui dados da API football
+for resp in (apifoot_live or []):
+try:
+fid = str(resp.get('fixture', {}).get('id') or resp.get('id'))
+merged[fid] = merged.get(fid, {})
+# ex: inclui gols, status, minute
+merged[fid]['api_fixture'] = resp
+except Exception:
+continue
+
+
+return merged, limited
+
+
+def score_fixture(self, fused):
+# heurística simples de pontuação (0-100)
+pressure = fused.get('pressure', 0)
+da = fused.get('dangerous_attacks', 0)
+sot = fused.get('shots_on_target', 0)
+xg = fused.get('xg', 0)
+
+
+score = (pressure * 6) + (da * 4) + (sot * 7) + (xg * 10)
+# normaliza
+return min(100, int(score))
+
+
+def run_cycle(self):
+merged, limited = self.fuse_data()
+now = datetime.utcnow().isoformat()
+
+
+signals = []
+for fid, data in merged.items():
+try:
+s = self.score_fixture(data)
+if s >= 70:
+signals.append({
+'fixture_id': fid,
+'score': s,
+'data': data,
+'ts': now
+})
+except Exception as e:
+logger.error(f"Erro scoring {e}")
+
+
+self.signals = signals
+
+
+# opcional: enviar notifier
+if self.notifier and signals:
+try:
+self.notifier.send(signals)
+except Exception as e:
+logger.error(f"Notifier falhou: {e}")
+
+
+def get_recent_signals(self):
+return self.signals
