@@ -1,12 +1,12 @@
-# app.py – SMART POLLING PRO
+# app.py – SMART POLLING PRO (Render Optimized)
 
 import os
 import logging
+import asyncio
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from apscheduler.schedulers.background import BackgroundScheduler
 
 from analyzer import Analyzer
 from sources.apifootball import APIFootballSource
@@ -23,27 +23,20 @@ POLL_NORMAL = 60
 POLL_TURBO = 12
 current_interval = POLL_NORMAL
 
-
 # ---------------------------------------------------
-# 1) CRIAÇÃO DO APP (TEM QUE VIR PRIMEIRO!)
+# 1) CRIAÇÃO DO APP
 # ---------------------------------------------------
 app = FastAPI(title="Goal Scanner - Smart Polling PRO")
 
-# Monta pastas estáticas e templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-
-# ---------------------------------------------------
-# 2) FRONT-END
-# ---------------------------------------------------
 @app.get("/")
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-
 # ---------------------------------------------------
-# 3) SISTEMA INTERNO (FONTES, ANALISADOR, SCHEDULER)
+# 2) SISTEMA INTERNO
 # ---------------------------------------------------
 
 # Initialize sources
@@ -54,7 +47,10 @@ bet = Bet365Source()
 odds = OddsSource()
 
 notifier = Notifier()
-analyzer = Analyzer(sources=[apifoot, sof, flash, bet, odds], notifier=notifier)
+analyzer = Analyzer(
+    sources=[apifoot, sof, flash, bet, odds],
+    notifier=notifier
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,46 +59,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-scheduler = BackgroundScheduler()
-job = None
 
+# ---------------------------------------------------
+# 3) NOVO SMART POLLING SEM APSCHEDULER
+# ---------------------------------------------------
 
-def update_polling_interval(has_live_games: bool, api_limited: bool):
-    global current_interval, job
+polling_task = None
 
-    new_interval = POLL_NORMAL if api_limited else (POLL_TURBO if has_live_games else POLL_NORMAL)
+async def polling_loop():
+    global current_interval
 
-    if new_interval != current_interval:
-        current_interval = new_interval
-        if job:
-            scheduler.remove_job("main_job")
-        scheduler.add_job(
-            analyzer.run_cycle,
-            "interval",
-            seconds=current_interval,
-            max_instances=1,
-            id="main_job"
-        )
-        logger.info(f"SMART POLLING ALTERADO → {current_interval}s")
+    logger.info("SMART POLLING: loop iniciado!")
+
+    while True:
+        try:
+            # roda análise
+            analyzer.run_cycle()
+
+            # detecta se há jogos ao vivo
+            live_data, limited = apifoot.detect_live_games()
+
+            if limited:
+                current_interval = POLL_NORMAL
+            else:
+                current_interval = POLL_TURBO if (live_data and len(live_data) > 0) else POLL_NORMAL
+
+            logger.info(f"[SMART POLLING] Intervalo atual: {current_interval}s")
+
+        except Exception as e:
+            logger.error(f"Erro no loop de polling: {e}")
+
+        await asyncio.sleep(current_interval)
 
 
 @app.on_event("startup")
-def startup_event():
-    global job
-    logger.info("Iniciando scheduler em modo SMART POLLING...")
-    job = scheduler.add_job(
-        analyzer.run_cycle,
-        "interval",
-        seconds=current_interval,
-        max_instances=1,
-        id="main_job"
-    )
-    scheduler.start()
+async def startup_event():
+    global polling_task
+    logger.info("Iniciando SMART POLLING otimizado para Render...")
+
+    # cria task assíncrona
+    polling_task = asyncio.create_task(polling_loop())
 
 
 @app.on_event("shutdown")
-def shutdown_event():
-    scheduler.shutdown(wait=False)
+async def shutdown_event():
+    logger.info("Encerrando loop...")
+    if polling_task:
+        polling_task.cancel()
+
 
 
 # ---------------------------------------------------
@@ -185,8 +189,3 @@ def status():
 def last_alerts():
     return analyzer.get_alerts()
 
-
-@app.post("/api/smart_update")
-def smart_update(has_live_games: bool, api_limited: bool):
-    update_polling_interval(has_live_games, api_limited)
-    return {"updated": True, "new_interval": current_interval}
