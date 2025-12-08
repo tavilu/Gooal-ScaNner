@@ -1,13 +1,15 @@
 services:
-  - name: goal-scanner
-    type: web
-    runtime: docker
-    repo: https://github.com/SEU_USER/SEU_REPO
+  - type: web
+    name: goal-scanner-full
+    env: python
     plan: free
+    buildCommand: "pip install --no-cache-dir -r requirements.txt"
+    startCommand: "gunicorn app:app -k uvicorn.workers.UvicornWorker --workers 2 --timeout 0 --bind 0.0.0.0:8000"
     envVars:
-      - key: APIFOOTBALL_KEY
-        sync: false
-      - key: ENVIRONMENT
-        value: "production"
-    healthCheckPath: /api/health
+      - key: ODDS_API_KEY
+        fromSecret: ODDS_API_KEY
+      - key: ONESIGNAL_APP_ID
+        fromSecret: ONESIGNAL_APP_ID
+      - key: ONESIGNAL_API_KEY
+        fromSecret: ONESIGNAL_API_KEY
     autoDeploy: true
