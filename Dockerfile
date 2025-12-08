@@ -1,39 +1,33 @@
+# ------------------------------
+#  BASE IMAGE
+# ------------------------------
 FROM python:3.11-slim
 
-# -----------------------------------
-# 1) PREPARO DO AMBIENTE
-# -----------------------------------
-WORKDIR /app
-
-ENV PYTHONUNBUFFERED=1
+# Evita criação de cache de pyc e melhora logs
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Instala dependências do sistema necessárias
+# Instala dependências do sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# -----------------------------------
-# 2) INSTALAÇÃO DAS DEPENDÊNCIAS
-# -----------------------------------
+# Diretório de trabalho
+WORKDIR /app
+
+# Copia os requirements primeiro (melhor cache)
 COPY requirements.txt .
+
+# Instala dependências Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# -----------------------------------
-# 3) COPIAR PROJETO
-# -----------------------------------
+# Copia o código
 COPY . .
 
+# Porta do FastAPI
 EXPOSE 8000
 
-# -----------------------------------
-# 4) EXECUÇÃO DO SERVIDOR FASTAPI/GUNICORN
-# -----------------------------------
-CMD ["gunicorn", "app:app", \
-     "-k", "uvicorn.workers.UvicornWorker", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "1", \
-     "--threads", "2", \
-     "--timeout", "120", \
-     "--graceful-timeout", "30", \
-     "--keep-alive", "5"]
+# Comando final — Uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+
