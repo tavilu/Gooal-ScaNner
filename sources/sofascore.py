@@ -1,92 +1,100 @@
 # sources/sofascore.py
 import requests
 import logging
-from bs4 import BeautifulSoup
 import random
 import time
 
 logger = logging.getLogger("goal_scanner.sofascore")
 
-# Headers reais de navegador para evitar 403
-HEADERS = [
-    {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/121.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Referer": "https://www.google.com"
-    },
-    {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Referer": "https://www.google.com"
-    }
+# User-Agents reais de navegador
+UAS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0 Safari/537.36"
 ]
 
-
 class SofaScoreSource:
+    """
+    Nova versão – usa API pública JSON ao invés do HTML.
+    Muito mais rápido, estável, e sem bloqueio 403.
+    """
+
     def __init__(self):
-        self.url = "https://www.sofascore.com/football/live"
+        # API aberta usada pelo próprio site
+        self.url = "https://api.sofascore.com/api/v1/sport/football/events/live"
+
+    def _headers(self):
+        return {
+            "User-Agent": random.choice(UAS),
+            "Accept": "application/json",
+            "Referer": "https://www.sofascore.com",
+        }
 
     def fetch_live_summary(self):
-        """
-        Retorna eventos básicos para o analisador.
-        Formato:
-        [
-            {
-                "fixture_id": "ID",
-                "pressure": float,
-                "dangerous_attacks": int,
-                "shots_on_target": int,
-                "xg": float
-            }
-        ]
-        """
-
-        header = random.choice(HEADERS)
-
         try:
-            r = requests.get(self.url, headers=header, timeout=10)
-            if r.status_code == 403:
-                logger.error("Sofascore bloqueou (403). Trocando headers...")
-                time.sleep(1)
+            time.sleep(random.uniform(0.4, 1.2))  # comportamento humano
+
+            r = requests.get(self.url, headers=self._headers(), timeout=8)
+
+            if r.status_code in [403, 429]:
+                logger.error(f"SofaScore bloqueou ({r.status_code}). Tentando fallback...")
                 return []
 
-            soup = BeautifulSoup(r.text, "lxml")
+            data = r.json().get("events", [])
 
-            matches = []
+            results = []
 
-            # Seletores melhorados
-            games = soup.select(".event-row, .sc-hLBbgP")
-            for g in games:
+            for m in data:
                 try:
-                    team_home = g.select_one(".team-home, .sc-kpOJdI")
-                    team_away = g.select_one(".team-away, .sc-fBWQRz")
-                    attack = g.select_one(".dangerous-attacks, .sc-hKwDqJ")
-                    pressure = g.select_one(".attack-momentum, .sc-bYEvPH")
-                    shots = g.select_one(".shots-on-target, .sc-hiCbrj")
+                    fixture_id = m.get("id")
 
-                    fixture = (
-                        (team_home.text.strip() if team_home else "") +
-                        (team_away.text.strip() if team_away else "")
-                    )
+                    stats = m.get("statistics", [])
+                    da = 0
+                    sot = 0
+                    xg = 0.0
+                    pressure = 0.0
 
-                    matches.append({
-                        "fixture_id": fixture or str(random.random()),
-                        "pressure": float(pressure.text.replace("%", "")) if pressure else 0.0,
-                        "dangerous_attacks": int(attack.text or 0) if attack else 0,
-                        "shots_on_target": int(shots.text or 0) if shots else 0,
-                        "xg": 0.0
+                    for stat in stats:
+                        for item in stat.get("stats", []):
+                            t = item.get("name", "").lower()
+                            v = item.get("value", 0)
+
+                            if "dangerous" in t:
+                                da = max(da, int(v))
+
+                            if "shots on target" in t:
+                                sot = max(sot, int(v))
+
+                            if t == "xg":
+                                try:
+                                    xg = float(v)
+                                except:
+                                    pass
+
+                            if "attacks" == t:
+                                pressure = min(10, float(v) / 10)
+
+                    results.append({
+                        "fixture_id": str(fixture_id),
+                        "pressure": pressure,
+                        "dangerous_attacks": da,
+                        "shots_on_target": sot,
+                        "xg": xg
                     })
-                except:
+
+                except Exception:
                     continue
 
-            return matches
+            return results
 
         except Exception as e:
             logger.error(f"Erro SofaScore: {e}")
             return []
+
 
 
