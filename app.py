@@ -147,3 +147,9 @@ async def telegram_webhook(request: Request):
     data = await request.json()
     print("Mensagem do Telegram:", data)
     return {"ok": True}
+from fastapi.responses import JSONResponse
+
+@app.get("/live-matches")
+def live_matches():
+    matches = get_live_matches()
+    return JSONResponse(content=matches)
