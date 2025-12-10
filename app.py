@@ -13,8 +13,8 @@ templates = Jinja2Templates(directory="templates")
 # CONFIGURAÇÕES DO TELEGRAM
 # =====================================================
 
-TELEGRAM_BOT_TOKEN = "SEU_TOKEN_AQUI"  # <-- coloque o seu
-CHAT_ID = 233304451 # <-- coloque o seu ID (te explico abaixo)
+TELEGRAM_BOT_TOKEN = 8263777761:AAH9mlZyc3eswgxxhpC6WGT-gQuqzXuEFOI
+CHAT_ID = 233304451 
 
 def send_telegram(msg: str):
     """Envia mensagem para o Telegram."""
