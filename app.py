@@ -3,86 +3,149 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 import threading
 import time
-import httpx
-import os
+import requests
+import json
 
 app = FastAPI()
-
 templates = Jinja2Templates(directory="templates")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+# =====================================================
+# CONFIGURAÇÕES DO TELEGRAM
+# =====================================================
+
+TELEGRAM_BOT_TOKEN = "SEU_TOKEN_AQUI"  # <-- coloque o seu
+CHAT_ID = SEU_CHAT_ID  # <-- coloque o seu ID (te explico abaixo)
+
+def send_telegram(msg: str):
+    """Envia mensagem para o Telegram."""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        data = {"chat_id": CHAT_ID, "text": msg}
+        requests.post(url, data=data, timeout=5)
+    except Exception as e:
+        print("Erro ao enviar Telegram:", e)
 
 
-# ======================================================
-# SEND MESSAGE
-# ======================================================
-async def send_message(chat_id, text):
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"{TELEGRAM_API}/sendMessage",
-            json={"chat_id": chat_id, "text": text},
-        )
+# =====================================================
+# FUNÇÃO PARA BUSCAR JOGOS AO VIVO
+# =====================================================
+
+def get_live_matches():
+    """Busca todos os jogos ao vivo via SofaScore."""
+    url = "https://api.sofascore.com/api/v1/sport/football/events/live"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        return data.get("events", [])
+    except:
+        return []
 
 
-# ======================================================
-# POLLING THREAD
-# ======================================================
+# =====================================================
+# LÓGICA DE ANÁLISE DE MOMENTOS PERIGOSOS
+# =====================================================
+
+last_alert = {}  # evita spam de jogos repetidos
+
+def analyze_match(match):
+    """Analisa um jogo individual e dispara alerta."""
+    global last_alert
+
+    event_id = match["id"]
+    home = match["homeTeam"]["name"]
+    away = match["awayTeam"]["name"]
+    score = match.get("homeScore", {}).get("current", 0), match.get("awayScore", {}).get("current", 0)
+
+    stats = match.get("statistics", {})
+
+    # Valores importantes
+    attacks = stats.get("attacks")
+    dangerous = stats.get("dangerousAttacks")
+    on_target = stats.get("onTarget")
+    corners = stats.get("corners")
+    
+    # Só alerta se tiver estatísticas
+    if not attacks or not dangerous:
+        return
+
+    # ================================
+    # LÓGICA PRINCIPAL DO GOL IMINENTE
+    # ================================
+    danger_total = dangerous.get("home", 0) + dangerous.get("away", 0)
+    attacks_total = attacks.get("home", 0) + attacks.get("away", 0)
+
+    # Critérios combinados (ajustado para ser assertivo)
+    gol_iminente = (
+        danger_total >= 18 or
+        (dangerous.get("home", 0) >= 10) or
+        (dangerous.get("away", 0) >= 10) or
+        (attacks_total >= 35) or
+        (on_target and (on_target.get("home", 0) >= 3 or on_target.get("away", 0) >= 3)) or
+        (corners and (corners.get("home", 0) >= 5 or corners.get("away", 0) >= 5))
+    )
+
+    # Anti-spam: só 1 alerta por 3 minutos por jogo
+    now = time.time()
+    if gol_iminente:
+        if event_id not in last_alert or now - last_alert[event_id] > 180:
+            msg = (
+                f"🔥 POSSÍVEL GOL IMINENTE!\n"
+                f"{home} x {away}\n"
+                f"Placar: {score[0]} - {score[1]}\n"
+                f"Ataques perigosos totais: {danger_total}\n"
+                f"Ataques: {attacks_total}"
+            )
+            send_telegram(msg)
+            last_alert[event_id] = now
+
+
+# =====================================================
+# THREAD DE POLLING (EXECUÇÃO CONTÍNUA)
+# =====================================================
+
 def polling_loop():
     while True:
         try:
-            print("🔄 Polling ativo... buscando partidas")
+            matches = get_live_matches()
 
-            # Exemplo de envio de evento automático (test)
-            # Depois substituímos pelos alertas reais de gols
-            # await send_message(SEU_CHAT_ID, "evento encontrado!")
+            print(f"🔄 {len(matches)} jogos ao vivo monitorados")
+
+            for match in matches:
+                analyze_match(match)
 
         except Exception as e:
-            print("Erro no polling:", e)
+            print("Erro no loop:", e)
 
-        time.sleep(10)  # intervalo seguro para Render
+        time.sleep(10)
 
 
 @app.on_event("startup")
-async def start_polling_thread():
-    # 🟦 Thread
+def start_thread():
+    print("🚀 Polling iniciado...")
     thread = threading.Thread(target=polling_loop, daemon=True)
     thread.start()
-    print("🚀 Thread de polling iniciada")
-
-    # 🟦 Registrar webhook automaticamente
-    async with httpx.AsyncClient() as client:
-        r = await client.get(f"{TELEGRAM_API}/setWebhook?url={WEBHOOK_URL}")
-        print("🔗 Webhook registrado:", WEBHOOK_URL, "->", r.json())
 
 
-# ======================================================
-# WEBHOOK ENDPOINT
-# ======================================================
-@app.post("/webhook")
-async def telegram_webhook(request: Request):
-    data = await request.json()
+# =====================================================
+# ROTAS FASTAPI
+# =====================================================
 
-    if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"]["text"]
-
-        # Responde sempre que alguém falar com o bot
-        await send_message(chat_id, f"Recebido: {text}")
-
-    return {"ok": True}
-
-
-# ======================================================
-# ROTAS DO SITE
-# ======================================================
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "gooal-scanner"}
+
+# =====================================================
+# WEBHOOK DO TELEGRAM (opcional)
+# =====================================================
+
+@app.post(f"/webhook/{TELEGRAM_BOT_TOKEN}")
+async def telegram_webhook(request: Request):
+    data = await request.json()
+    print("Mensagem do Telegram:", data)
+    return {"ok": True}
+
 
