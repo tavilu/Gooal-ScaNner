@@ -37,7 +37,8 @@ def get_live_matches():
         r = requests.get(url, timeout=10)
         data = r.json()
         return data.get("events", [])
-    except:
+    except Exception as e:
+        print("Erro ao buscar jogos:", e)
         return []
 
 
@@ -45,7 +46,7 @@ def get_live_matches():
 # LÓGICA DE ANÁLISE DE MOMENTOS PERIGOSOS
 # =====================================================
 
-last_alert = {}  # evita spam de jogos repetidos
+last_alert = {}  # evita spam
 
 def analyze_match(match):
     """Analisa um jogo individual e dispara alerta."""
@@ -54,27 +55,24 @@ def analyze_match(match):
     event_id = match["id"]
     home = match["homeTeam"]["name"]
     away = match["awayTeam"]["name"]
-    score = match.get("homeScore", {}).get("current", 0), match.get("awayScore", {}).get("current", 0)
+    score = (
+        match.get("homeScore", {}).get("current", 0),
+        match.get("awayScore", {}).get("current", 0)
+    )
 
     stats = match.get("statistics", {})
 
-    # Valores importantes
     attacks = stats.get("attacks")
     dangerous = stats.get("dangerousAttacks")
     on_target = stats.get("onTarget")
     corners = stats.get("corners")
     
-    # Só alerta se tiver estatísticas
     if not attacks or not dangerous:
         return
 
-    # ================================
-    # LÓGICA PRINCIPAL DO GOL IMINENTE
-    # ================================
     danger_total = dangerous.get("home", 0) + dangerous.get("away", 0)
     attacks_total = attacks.get("home", 0) + attacks.get("away", 0)
 
-    # Critérios combinados (ajustado para ser assertivo)
     gol_iminente = (
         danger_total >= 18 or
         (dangerous.get("home", 0) >= 10) or
@@ -84,7 +82,6 @@ def analyze_match(match):
         (corners and (corners.get("home", 0) >= 5 or corners.get("away", 0) >= 5))
     )
 
-    # Anti-spam: só 1 alerta por 3 minutos por jogo
     now = time.time()
     if gol_iminente:
         if event_id not in last_alert or now - last_alert[event_id] > 180:
@@ -131,12 +128,15 @@ def start_thread():
 # =====================================================
 
 @app.get("/", response_class=HTMLResponse)
+@app.head("/", include_in_schema=False)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
 
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "gooal-scanner"}
+
 
 # =====================================================
 # WEBHOOK DO TELEGRAM (opcional)
@@ -147,5 +147,3 @@ async def telegram_webhook(request: Request):
     data = await request.json()
     print("Mensagem do Telegram:", data)
     return {"ok": True}
-
-
