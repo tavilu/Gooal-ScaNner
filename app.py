@@ -13,7 +13,7 @@ templates = Jinja2Templates(directory="templates")
 # CONFIGURAÇÕES DO TELEGRAM
 # =====================================================
 
-TELEGRAM_BOT_TOKEN = 8263777761:AAH9mlZyc3eswgxxhpC6WGT-gQuqzXuEFOI
+TELEGRAM_BOT_TOKEN = "8263777761:AAH9mlZyc3eswgxxhpC6WGT-gQuqzXuEFOI"
 CHAT_ID = 233304451 
 
 def send_telegram(msg: str):
