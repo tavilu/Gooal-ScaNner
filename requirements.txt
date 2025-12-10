@@ -1,6 +1,5 @@
 fastapi
 uvicorn[standard]
-gunicorn
 httpx
 pydantic
 python-dateutil
