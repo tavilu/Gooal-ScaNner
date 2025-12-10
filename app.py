@@ -33,7 +33,7 @@ API_KEY = "fb4b9c6f7a7cf10833165326d348d357"
 def get_live_matches():
     url = "https://v3.football.api-sports.io/fixtures?live=all"
     headers = {
-        "x-apisports-key": API_KEY
+        "fb4b9c6f7a7cf10833165326d348d357": API_KEY
     }
     try:
         response = requests.get(url, headers=headers, timeout=10)
