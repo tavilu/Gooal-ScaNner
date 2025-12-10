@@ -13,7 +13,7 @@ templates = Jinja2Templates(directory="templates")
 # =====================================================
 
 TELEGRAM_BOT_TOKEN = "8263777761:AAH9mlZyc3eswgxxhpC6WGT-gQuqzXuEFOI"
-CHAT_ID = 233304451  # Seu chat ID do Telegram
+CHAT_ID = 233304451
 
 def send_telegram(msg: str):
     """Envia mensagem para o Telegram."""
@@ -24,75 +24,52 @@ def send_telegram(msg: str):
     except Exception as e:
         print("Erro ao enviar Telegram:", e)
 
+# =====================================================
+# CONFIGURAÇÕES DA API-FOOTBALL
+# =====================================================
 
-# =====================================================
-# FUNÇÃO PARA BUSCAR JOGOS AO VIVO COM USER-AGENT
-# =====================================================
+API_KEY = "fb4b9c6f7a7cf10833165326d348d357" 
 
 def get_live_matches():
-    url = "https://api.sofascore.com/api/v1/sport/football/events/live"
+    url = "https://v3.football.api-sports.io/fixtures?live=all"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        "x-apisports-key": API_KEY
     }
     try:
-        r = requests.get(url, headers=headers, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("events", [])
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", [])
     except Exception as e:
         print("Erro ao buscar jogos ao vivo:", e)
         return []
 
-
 # =====================================================
-# LÓGICA DE ANÁLISE DE MOMENTOS PERIGOSOS
+# LÓGICA DE ALERTA
 # =====================================================
 
 last_alert = {}
 
 def analyze_match(match):
     global last_alert
+    fixture = match["fixture"]
+    teams = match["teams"]
+    goals = match["goals"]
 
-    event_id = match["id"]
-    home = match["homeTeam"]["name"]
-    away = match["awayTeam"]["name"]
-    score = match.get("homeScore", {}).get("current", 0), match.get("awayScore", {}).get("current", 0)
-
-    stats = match.get("statistics", {})
-
-    attacks = stats.get("attacks")
-    dangerous = stats.get("dangerousAttacks")
-    on_target = stats.get("onTarget")
-    corners = stats.get("corners")
-
-    if not attacks or not dangerous:
-        return
-
-    danger_total = dangerous.get("home", 0) + dangerous.get("away", 0)
-    attacks_total = attacks.get("home", 0) + attacks.get("away", 0)
-
-    gol_iminente = (
-        danger_total >= 18 or
-        (dangerous.get("home", 0) >= 10) or
-        (dangerous.get("away", 0) >= 10) or
-        (attacks_total >= 35) or
-        (on_target and (on_target.get("home", 0) >= 3 or on_target.get("away", 0) >= 3)) or
-        (corners and (corners.get("home", 0) >= 5 or corners.get("away", 0) >= 5))
-    )
+    event_id = fixture["id"]
+    home = teams["home"]["name"]
+    away = teams["away"]["name"]
+    score = (goals["home"], goals["away"])
 
     now = time.time()
-    if gol_iminente:
-        if event_id not in last_alert or now - last_alert[event_id] > 180:
-            msg = (
-                f"🔥 POSSÍVEL GOL IMINENTE!\n"
-                f"{home} x {away}\n"
-                f"Placar: {score[0]} - {score[1]}\n"
-                f"Ataques perigosos totais: {danger_total}\n"
-                f"Ataques: {attacks_total}"
-            )
-            send_telegram(msg)
-            last_alert[event_id] = now
-
+    if event_id not in last_alert or now - last_alert[event_id] > 180:
+        msg = (
+            f"⚽ Jogo ao vivo:\n"
+            f"{home} x {away}\n"
+            f"Placar: {score[0]} - {score[1]}"
+        )
+        send_telegram(msg)
+        last_alert[event_id] = now
 
 # =====================================================
 # THREAD DE POLLING
@@ -100,22 +77,17 @@ def analyze_match(match):
 
 def polling_loop():
     while True:
-        try:
-            matches = get_live_matches()
-            print(f"🔄 {len(matches)} jogos ao vivo monitorados")
-            for match in matches:
-                analyze_match(match)
-        except Exception as e:
-            print("Erro no loop:", e)
-        time.sleep(10)
-
+        matches = get_live_matches()
+        print(f"🔄 {len(matches)} jogos ao vivo monitorados")
+        for match in matches:
+            analyze_match(match)
+        time.sleep(15)
 
 @app.on_event("startup")
 def start_thread():
-    print("🚀 Polling iniciado...")
     thread = threading.Thread(target=polling_loop, daemon=True)
     thread.start()
-
+    print("🚀 Polling iniciado...")
 
 # =====================================================
 # ROTAS FASTAPI
@@ -128,3 +100,14 @@ def home(request: Request):
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "gooal-scanner"}
+
+# =====================================================
+# WEBHOOK DO TELEGRAM (opcional)
+# =====================================================
+
+@app.post(f"/webhook/{TELEGRAM_BOT_TOKEN}")
+async def telegram_webhook(request: Request):
+    data = await request.json()
+    print("Mensagem do Telegram:", data)
+    return {"ok": True}
+
