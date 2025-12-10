@@ -8,3 +8,4 @@ loguru
 beautifulsoup4
 lxml
 websockets
+requests
