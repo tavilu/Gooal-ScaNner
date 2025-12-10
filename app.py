@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 import threading
 import time
 import requests
+import os
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -12,8 +13,8 @@ templates = Jinja2Templates(directory="templates")
 # CONFIGURAÇÕES DO TELEGRAM
 # =====================================================
 
-TELEGRAM_BOT_TOKEN = "8263777761:AAH9mlZyc3eswgxxhpC6WGT-gQuqzXuEFOI"
-CHAT_ID = 233304451
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "seu_token_aqui")
+CHAT_ID = int(os.getenv("CHAT_ID", "233304451"))
 
 def send_telegram(msg: str):
     """Envia mensagem para o Telegram."""
@@ -28,12 +29,12 @@ def send_telegram(msg: str):
 # CONFIGURAÇÕES DA API-FOOTBALL
 # =====================================================
 
-API_KEY = "fb4b9c6f7a7cf10833165326d348d357" 
+API_KEY = os.getenv("API_FOOTBALL_KEY", "sua_api_key_aqui")
 
 def get_live_matches():
     url = "https://v3.football.api-sports.io/fixtures?live=all"
     headers = {
-        "fb4b9c6f7a7cf10833165326d348d357": API_KEY
+        "x-apisports-key": API_KEY
     }
     try:
         response = requests.get(url, headers=headers, timeout=10)
@@ -62,6 +63,7 @@ def analyze_match(match):
     score = (goals["home"], goals["away"])
 
     now = time.time()
+    # Evitar spam: 1 alerta a cada 3 minutos por jogo
     if event_id not in last_alert or now - last_alert[event_id] > 180:
         msg = (
             f"⚽ Jogo ao vivo:\n"
@@ -110,4 +112,3 @@ async def telegram_webhook(request: Request):
     data = await request.json()
     print("Mensagem do Telegram:", data)
     return {"ok": True}
-
