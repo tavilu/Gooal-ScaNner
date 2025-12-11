@@ -1,107 +1,11 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="pt-BR">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Gooal Scanner - Monitor</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  .match { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 6px; }
-  .teams { font-weight: bold; font-size: 1.2em; }
-  .score { font-size: 1.1em; margin-top: 5px; }
-  .stats { margin-top: 8px; font-size: 0.9em; color: #555; }
-  .status { font-style: italic; margin-top: 5px; color: #007BFF; }
-</style>
+    <meta charset="UTF-8">
+    <title>Gooal Scanner</title>
 </head>
 <body>
-<h1>Gooal Scanner</h1>
-<p>Status: <span id="status">carregando...</span></p>
-<div id="matches">Carregando jogos ao vivo...</div>
-
-<script>
-async function fetchHealth() {
-  try {
-    const res = await fetch('/health');
-    const json = await res.json();
-    document.getElementById('status').textContent = json.status === 'ok' ? 'online' : 'offline';
-  } catch {
-    document.getElementById('status').textContent = 'offline';
-  }
-}
-
-function formatTime(match) {
-  if (match.status && match.status.type === "inprogress") {
-    // Pode ter um campo com tempo decorrido
-    if (match.time && match.time.currentPeriodStartTimestamp) {
-      const start = new Date(match.time.currentPeriodStartTimestamp);
-      const now = new Date();
-      const diffMins = Math.floor((now - start) / 60000);
-      return `Tempo: ${diffMins} min`;
-    }
-    if (match.status.description) {
-      return match.status.description;
-    }
-    return 'Jogo em andamento';
-  } else if (match.status && match.status.type === "finished") {
-    return "Finalizado";
-  } else if (match.status && match.status.type === "notstarted") {
-    return "Não iniciado";
-  }
-  return "";
-}
-
-async function fetchLiveMatches() {
-  try {
-    const res = await fetch('/live-matches');
-    if (!res.ok) throw new Error('Erro ao buscar partidas');
-    const matches = await res.json();
-    const container = document.getElementById('matches');
-    container.innerHTML = '';
-
-    if (matches.length === 0) {
-      container.textContent = 'Sem jogos ao vivo no momento.';
-      return;
-    }
-
-    matches.forEach(match => {
-      const home = match.homeTeam.name;
-      const away = match.awayTeam.name;
-      const scoreHome = match.homeScore?.current || 0;
-      const scoreAway = match.awayScore?.current || 0;
-
-      // Pegando estatísticas (se disponíveis)
-      const stats = match.statistics || {};
-      const attacks = stats.attacks ? (stats.attacks.home || 0) + (stats.attacks.away || 0) : 0;
-      const dangerous = stats.dangerousAttacks ? (stats.dangerousAttacks.home || 0) + (stats.dangerousAttacks.away || 0) : 0;
-      const corners = stats.corners ? (stats.corners.home || 0) + (stats.corners.away || 0) : 0;
-
-      const matchDiv = document.createElement('div');
-      matchDiv.className = 'match';
-
-      matchDiv.innerHTML = `
-        <div class="teams">${home} x ${away}</div>
-        <div class="score">Placar: ${scoreHome} - ${scoreAway}</div>
-        <div class="status">${formatTime(match)}</div>
-        <div class="stats">
-          Ataques: ${attacks} | Ataques Perigosos: ${dangerous} | Escanteios: ${corners}
-        </div>
-      `;
-
-      container.appendChild(matchDiv);
-    });
-  } catch {
-    document.getElementById('matches').textContent = 'Erro ao carregar jogos.';
-  }
-}
-
-function init() {
-  fetchHealth();
-  fetchLiveMatches();
-  setInterval(fetchHealth, 60000);       // Atualiza status a cada 1 min
-  setInterval(fetchLiveMatches, 10000);  // Atualiza partidas a cada 10s
-}
-
-window.onload = init;
-</script>
+    <h1>Gooal Scanner ⚽</h1>
+    <p>Monitorando partidas ao vivo…</p>
 </body>
 </html>
