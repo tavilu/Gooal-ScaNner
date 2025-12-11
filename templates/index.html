@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gooal Scanner - Live (TotalFootball)</title></head>
+<body>
+  <h1>Gooal Scanner — Live (TotalFootball)</h1>
+  <p>Status: <span id="status">carregando...</span></p>
+  <div id="matches">Carregando...</div>
+  <script>
+    async function fetchHealth(){ try{ const r=await fetch('/health'); const j=await r.json(); document.getElementById('status').textContent=j.status; }catch(e){document.getElementById('status').textContent='offline'} }
+    setInterval(fetchHealth,10000); fetchHealth();
+  </script>
+</body>
+</html>
