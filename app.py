@@ -4,20 +4,17 @@ from fastapi.templating import Jinja2Templates
 import threading
 import time
 import requests
-import os
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# =====================================================
-# CONFIGURAÇÕES DO TELEGRAM
-# =====================================================
-
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "seu_token_aqui")
-CHAT_ID = int(os.getenv("CHAT_ID", "233304451"))
+# ================================
+# TELEGRAM
+# ================================
+TELEGRAM_BOT_TOKEN = "8263777761:AAH9mlZyc3eswgxxhpC6WGT-gQuqzXuEFOI"
+CHAT_ID = 233304451
 
 def send_telegram(msg: str):
-    """Envia mensagem para o Telegram."""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         data = {"chat_id": CHAT_ID, "text": msg}
@@ -25,17 +22,18 @@ def send_telegram(msg: str):
     except Exception as e:
         print("Erro ao enviar Telegram:", e)
 
-# =====================================================
-# CONFIGURAÇÕES DA API-FOOTBALL
-# =====================================================
-
-API_KEY = os.getenv("API_FOOTBALL_KEY", "sua_api_key_aqui")
+# ================================
+# API-FOOTBALL CONFIG
+# ================================
+API_KEY = "fb4b9c6f7a7cf10833165326d348d357"
 
 def get_live_matches():
     url = "https://v3.football.api-sports.io/fixtures?live=all"
+
     headers = {
         "x-apisports-key": API_KEY
     }
+
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
@@ -45,14 +43,14 @@ def get_live_matches():
         print("Erro ao buscar jogos ao vivo:", e)
         return []
 
-# =====================================================
-# LÓGICA DE ALERTA
-# =====================================================
-
+# ================================
+# ALERTA
+# ================================
 last_alert = {}
 
 def analyze_match(match):
     global last_alert
+
     fixture = match["fixture"]
     teams = match["teams"]
     goals = match["goals"]
@@ -63,7 +61,7 @@ def analyze_match(match):
     score = (goals["home"], goals["away"])
 
     now = time.time()
-    # Evitar spam: 1 alerta a cada 3 minutos por jogo
+
     if event_id not in last_alert or now - last_alert[event_id] > 180:
         msg = (
             f"⚽ Jogo ao vivo:\n"
@@ -73,16 +71,17 @@ def analyze_match(match):
         send_telegram(msg)
         last_alert[event_id] = now
 
-# =====================================================
-# THREAD DE POLLING
-# =====================================================
-
+# ================================
+# POLLING (loop)
+# ================================
 def polling_loop():
     while True:
         matches = get_live_matches()
         print(f"🔄 {len(matches)} jogos ao vivo monitorados")
+
         for match in matches:
             analyze_match(match)
+
         time.sleep(15)
 
 @app.on_event("startup")
@@ -91,10 +90,9 @@ def start_thread():
     thread.start()
     print("🚀 Polling iniciado...")
 
-# =====================================================
-# ROTAS FASTAPI
-# =====================================================
-
+# ================================
+# ROTAS
+# ================================
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -103,12 +101,9 @@ def home(request: Request):
 def health():
     return {"status": "ok", "service": "gooal-scanner"}
 
-# =====================================================
-# WEBHOOK DO TELEGRAM (opcional)
-# =====================================================
-
 @app.post(f"/webhook/{TELEGRAM_BOT_TOKEN}")
 async def telegram_webhook(request: Request):
     data = await request.json()
     print("Mensagem do Telegram:", data)
     return {"ok": True}
+
