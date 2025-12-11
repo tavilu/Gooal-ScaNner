@@ -1,19 +1,16 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-import threading
-import time
+import asyncio
 import requests
+import time
 
-# =============================================================
-# FASTAPI INIT
-# =============================================================
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# =============================================================
-# CONFIG TELEGRAM
-# =============================================================
+# ================================
+# TELEGRAM
+# ================================
 TELEGRAM_BOT_TOKEN = "8263777761:AAH9mlZyc3eswgxxhpC6WGT-gQuqzXuEFOI"
 CHAT_ID = 233304451
 
@@ -23,42 +20,38 @@ def send_telegram(msg: str):
         data = {"chat_id": CHAT_ID, "text": msg}
         requests.post(url, data=data, timeout=5)
     except Exception as e:
-        print("❌ Erro ao enviar mensagem no Telegram:", e)
+        print("Erro ao enviar Telegram:", e)
 
-# =============================================================
-# CONFIG API-FOOTBALL
-# =============================================================
+
+# ================================
+# API-FOOTBALL CONFIG
+# ================================
 API_KEY = "fb4b9c6f7a7cf10833165326d348d357"
 
-def get_live_matches():
+def fetch_live_matches():
+    """Chamada síncrona — usada dentro de task assíncrona."""
     url = "https://v3.football.api-sports.io/fixtures?live=all"
-
-    headers = {
-        "x-apisports-key": API_KEY,
-        "x-apisports-host": "v3.football.api-sports.io"
-    }
+    headers = {"x-apisports-key": API_KEY}
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=headers, timeout=10)
+        data = r.json()
 
-        # Debug avançado
-        print("STATUS:", response.status_code)
-        print("RESPONSE HEADERS:", response.headers)
-        print("RAW RESPONSE:", response.text[:300])
+        # debug opcional:
+        print("STATUS:", r.status_code)
+        print("RAW:", str(data)[:200])
 
-        response.raise_for_status()
-
-        data = response.json()
         return data.get("response", [])
 
     except Exception as e:
-        print("🔥 ERRO AO BUSCAR JOGOS AO VIVO:", e)
+        print("Erro ao buscar jogos ao vivo:", e)
         return []
 
-# =============================================================
-# ANÁLISE E ALERTAS
-# =============================================================
-last_alert = {}  # Guarda timestamp do último alerta por jogo
+
+# ================================
+# MONITORAMENTO / ALERTAS
+# ================================
+last_alert = {}
 
 def analyze_match(match):
     global last_alert
@@ -70,55 +63,65 @@ def analyze_match(match):
     event_id = fixture["id"]
     home = teams["home"]["name"]
     away = teams["away"]["name"]
-    score_home = goals["home"]
-    score_away = goals["away"]
+    score = (goals["home"], goals["away"])
 
     now = time.time()
 
-    # Evita alertas repetidos
+    # evita spam
     if event_id not in last_alert or now - last_alert[event_id] > 180:
-
         msg = (
             f"⚽ Jogo ao vivo:\n"
             f"{home} x {away}\n"
-            f"Placar: {score_home} - {score_away}"
+            f"Placar: {score[0]} - {score[1]}"
         )
-
         send_telegram(msg)
         last_alert[event_id] = now
 
-# =============================================================
-# LOOP DE POLLING
-# =============================================================
-def polling_loop():
+
+# ================================
+# BACKGROUND TASK ASSÍNCRONA
+# ================================
+async def polling_loop():
+    await asyncio.sleep(5)  # espera o servidor subir totalmente
+
+    print("🚀 Background task iniciada...")
+
     while True:
-        matches = get_live_matches()
+        matches = fetch_live_matches()
+
         print(f"🔄 {len(matches)} jogos ao vivo monitorados")
 
         for match in matches:
             analyze_match(match)
 
-        time.sleep(10)
+        await asyncio.sleep(15)  # pausa sem travar o servidor
+
 
 @app.on_event("startup")
-def start_background_thread():
-    thread = threading.Thread(target=polling_loop, daemon=True)
-    thread.start()
-    print("🚀 Polling iniciado...")
+async def start_background():
+    asyncio.create_task(polling_loop())
+    print("✔ Background task registrada com sucesso!")
 
-# =============================================================
-# ROTAS WEB
-# =============================================================
+
+# ================================
+# ROTAS
+# ================================
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/health")
+@app.get("/api/health")
 def health():
     return {"status": "ok", "service": "gooal-scanner"}
 
+
+# ================================
+# TELEGRAM WEBHOOK (opcional)
+# ================================
 @app.post(f"/webhook/{TELEGRAM_BOT_TOKEN}")
 async def telegram_webhook(request: Request):
     data = await request.json()
-    print("📩 Mensagem recebida no webhook:", data)
+    print("Mensagem do Telegram:", data)
     return {"ok": True}
+
+
