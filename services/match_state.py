@@ -1,14 +1,23 @@
-import time
+async def poll_matches():
+    while True:
+        try:
+            matches = get_live_matches()
+        except Exception as e:
+            print("Erro ao buscar partidas:", e)
+            # pausa maior para evitar loops rápidos em caso de falha
+            await asyncio.sleep(600)
+            continue
 
-MATCH_STATE = {}
+        # processa apenas se não houve erro
+        for match in matches:
+            state = get_state(match["id"])
+            if has_changed(match, state):
+                alerts = analyze(match, state)
+                for alert in alerts:
+                    send_telegram_message(alert["message"])
+                    state["alerts_sent"].add(alert["key"])
+                state["last_minute"] = match.get("minute")
+                state["last_score"] = match.get("score")
 
-def get_state(match_id):
-    if match_id not in MATCH_STATE:
-        MATCH_STATE[match_id] = {
-            "created_at": time.time(),
-            "last_minute": None,
-            "last_score": None,
-            "pressure": 0,
-            "alerts_sent": set()
-        }
-    return MATCH_STATE[match_id]
+        # espera entre polls para economizar requisições
+        await asyncio.sleep(600)  # 10 minutos
