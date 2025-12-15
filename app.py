@@ -23,8 +23,8 @@ async def poll_matches():
         try:
             matches = get_live_matches()
         except Exception as e:
-            print("Erro ao buscar partidas:", e)
-            await asyncio.sleep(30)  # backoff pesado
+            print("🔥 LOOP DE SIMULAÇÃO ATIVO", e)
+            await asyncio.sleep(10)  # backoff pesado
             continue
 
         for match in matches:
