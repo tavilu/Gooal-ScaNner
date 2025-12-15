@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+gunicorn
 httpx
 jinja2
 requests
