@@ -1,5 +1,6 @@
 import os
 import requests
+from datetime import date
 
 API_URL = "https://totalfootball-api.p.rapidapi.com/fixtures"
 
@@ -18,11 +19,13 @@ def normalize_match(raw):
     }
 
 def get_live_matches():
+    today = date.today().isoformat()
+
     try:
         response = requests.get(
             API_URL,
             headers=HEADERS,
-            params={"live": "all"},
+            params={"date": today},
             timeout=15
         )
         response.raise_for_status()
@@ -33,5 +36,3 @@ def get_live_matches():
     except Exception as e:
         print(f"Erro TotalFootball: {e}")
         return []
-
-    
