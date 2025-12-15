@@ -24,7 +24,7 @@ async def poll_matches():
             matches = get_live_matches()
         except Exception as e:
             print("Erro ao buscar partidas:", e)
-            await asyncio.sleep(600)  # backoff pesado
+            await asyncio.sleep(30)  # backoff pesado
             continue
 
         for match in matches:
@@ -44,7 +44,7 @@ async def poll_matches():
             except Exception as e:
                 print(f"Erro ao processar partida {match.get('id')}: {e}")
 
-        await asyncio.sleep(600)  # 10 minutos (economia total)
+        await asyncio.sleep(30)  # 10 minutos (economia total)
 
 
 @app.on_event("startup")
