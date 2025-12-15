@@ -2,7 +2,7 @@ import requests
 import os
 
 BOT_TOKEN = os.getenv("8263777761:AAH9mlZyc3eswgxxhpC6WGT-gQuqzXuEFOI")
-CHAT_ID = os.getenv("233304451")
+CHAT_ID = os.getenv("2095500032")
 
 def send_telegram_message(message: str):
     print("DEBUG Telegram:", BOT_TOKEN, CHAT_ID)
