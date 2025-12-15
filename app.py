@@ -10,7 +10,6 @@ from services.analyzer import analyze
 from services.telegram_service import send_telegram_message
 
 app = FastAPI()
-
 templates = Jinja2Templates(directory="templates")
 
 
@@ -21,22 +20,31 @@ def health():
 
 async def poll_matches():
     while True:
-        matches = get_live_matches()
+        try:
+            matches = get_live_matches()
+        except Exception as e:
+            print("Erro ao buscar partidas:", e)
+            await asyncio.sleep(600)  # backoff pesado
+            continue
 
         for match in matches:
-            state = get_state(match["id"])
+            try:
+                state = get_state(match["id"])
 
-            if has_changed(match, state):
-                alerts = analyze(match, state)
+                if has_changed(match, state):
+                    alerts = analyze(match, state)
 
-                for alert in alerts:
-                    send_telegram_message(alert["message"])
-                    state["alerts_sent"].add(alert["key"])
+                    for alert in alerts:
+                        send_telegram_message(alert["message"])
+                        state["alerts_sent"].add(alert["key"])
 
-                state["last_minute"] = match["minute"]
-                state["last_score"] = match["score"]
+                    state["last_minute"] = match.get("minute")
+                    state["last_score"] = match.get("score")
 
-        await asyncio.sleep(300)  # 5 minutos
+            except Exception as e:
+                print(f"Erro ao processar partida {match.get('id')}: {e}")
+
+        await asyncio.sleep(600)  # 10 minutos (economia total)
 
 
 @app.on_event("startup")
@@ -50,3 +58,4 @@ def index(request: Request):
         "index.html",
         {"request": request}
     )
+
