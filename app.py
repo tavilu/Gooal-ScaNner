@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from services.totalfootball_service import get_live_matches
+from services.sofascore_service import get_live_matches
 from services.match_state import get_state
 from services.change_detector import has_changed
 from services.analyzer import analyze
