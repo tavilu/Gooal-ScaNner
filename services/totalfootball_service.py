@@ -6,7 +6,7 @@ API_KEY = os.getenv("RAPIDAPI_KEY")
 API_HOST = "totalfootball-api.p.rapidapi.com"
 
 LAST_429 = None
-BLOCK_TIME = 60 * 60  # 1 hora
+BLOCK_TIME = 60 * 60
 
 
 def normalize_match(raw):
@@ -30,7 +30,7 @@ def get_live_matches():
     global LAST_429
 
     if not can_call_api():
-        print("⛔ TotalFootball bloqueado temporariamente (429)")
+        print("⛔ API bloqueada temporariamente")
         return []
 
     url = "https://totalfootball-api.p.rapidapi.com/matches/live"
@@ -41,21 +41,19 @@ def get_live_matches():
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=headers, timeout=10)
 
-        if response.status_code == 429:
+        if r.status_code == 429:
             LAST_429 = time.time()
-            print("🚫 Cota excedida — pausando chamadas por 1h")
+            print("🚫 Cota excedida")
             return []
 
-        response.raise_for_status()
+        r.raise_for_status()
+        data = r.json()
 
-        data = response.json()
         matches = data.get("response", [])
+        return [normalize_match(m) for m in matches]
 
-        normalized = [normalize_match(m) for m in matches]
-        print(f"🔄 {len(normalized)} jogos ao vivo recuperados")
-
-        return normalized
-
-    except Exception as
+    except Exception as e:
+        print("Erro TotalFootball:", e)
+        return []
