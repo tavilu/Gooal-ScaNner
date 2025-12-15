@@ -47,10 +47,10 @@ async def poll_matches():
         await asyncio.sleep(30)  # 10 minutos (economia total)
 
 
-@app.on_event("startup")
-async def startup_event():
-    send_telegram_message("🚀 Gooal Scanner ONLINE (teste de startup)")
-    asyncio.create_task(poll_matches())
+@app.get("/test-telegram")
+def test_telegram():
+    send_telegram_message("🚀 Gooal Scanner conectado com sucesso!")
+    return {"ok": True}
 
 
 @app.get("/", response_class=HTMLResponse)
