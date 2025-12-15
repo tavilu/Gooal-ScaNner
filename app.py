@@ -49,6 +49,7 @@ async def poll_matches():
 
 @app.on_event("startup")
 async def startup_event():
+    send_telegram_message("🚀 Gooal Scanner ONLINE (teste de startup)")
     asyncio.create_task(poll_matches())
 
 
