@@ -9,6 +9,11 @@ from services.change_detector import has_changed
 from services.analyzer import analyze
 from services.telegram_service import send_telegram_message
 
+@app.on_event("startup")
+async def startup_event():
+    print("🚀 Gooal Scanner iniciado (loop ativo)")
+    asyncio.create_task(poll_matches())
+
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
