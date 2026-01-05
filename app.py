@@ -9,27 +9,28 @@ from services.change_detector import has_changed
 from services.analyzer import analyze
 from services.telegram_service import send_telegram_message
 
-@app.on_event("startup")
-async def startup_event():
-    print("🚀 Gooal Scanner iniciado (loop ativo)")
-    asyncio.create_task(poll_matches())
 
+# 🔹 APP PRIMEIRO (OBRIGATÓRIO)
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 
+# 🔹 HEALTHCHECK (Render)
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
+# 🔹 LOOP PRINCIPAL
 async def poll_matches():
+    print("🔥 Loop de simulação iniciado")
+
     while True:
         try:
             matches = get_live_matches()
         except Exception as e:
-            print("🔥 LOOP DE SIMULAÇÃO ATIVO", e)
-            await asyncio.sleep(10)  # backoff pesado
+            print("Erro ao buscar partidas:", e)
+            await asyncio.sleep(10)
             continue
 
         for match in matches:
@@ -47,17 +48,26 @@ async def poll_matches():
                     state["last_score"] = match.get("score")
 
             except Exception as e:
-                print(f"Erro ao processar partida {match.get('id')}: {e}")
+                print(f"Erro na partida {match.get('id')}: {e}")
 
-        await asyncio.sleep(30)  # 10 minutos (economia total)
+        await asyncio.sleep(30)
 
 
+# 🔹 STARTUP EVENT (AGORA NO LUGAR CERTO)
+@app.on_event("startup")
+async def startup_event():
+    print("🚀 Gooal Scanner iniciado (startup)")
+    asyncio.create_task(poll_matches())
+
+
+# 🔹 TESTE TELEGRAM
 @app.get("/test-telegram")
 def test_telegram():
     send_telegram_message("🚀 Gooal Scanner conectado com sucesso!")
     return {"ok": True}
 
 
+# 🔹 FRONT
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(
